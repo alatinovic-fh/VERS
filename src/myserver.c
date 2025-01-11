@@ -335,117 +335,118 @@ void *clientCommunication(void *data)
                strcpy(path, directory);
 
                /////////////////////SEND MESSAGE////////////////////////
-               if (sendMessage == 0)
+               if (sendMessage == 0) // Check if the client sent the "SEND" command
                {
                   printf("SEND:\n");
-                  // sender
-                  strncpy(sender, username, SIZE - 1);
-                  sender[SIZE] = '\0';
-                  printf("Sender: %s\n", sender);
 
-                  // reciever
-                  bzero(buffer, BUF);
-                  bzero(receiver, SIZE);
-                  message(current_socket, buffer);
-                  strncpy(receiver, buffer, SIZE - 1);
-                  receiver[SIZE] = '\0';
-                  printf("Receiver: %s\n", receiver);
+                  // Save the sender's username
+                  strncpy(sender, username, SIZE - 1); // Copy the sender's username into the sender buffer, leaving space for the null terminator
+                  sender[SIZE] = '\0'; // Ensure the sender buffer is null-terminated
+                  printf("Sender: %s\n", sender); // Debug output to confirm the sender's name
 
-                  // crate a directory for the user
-                  strcat(path, receiver);
-                  create_dir(path);
+                  // Receive and save the receiver's username
+                  bzero(buffer, BUF); // Clear the buffer to prepare for new data
+                  bzero(receiver, SIZE); // Clear the receiver buffer
+                  message(current_socket, buffer); // Receive the receiver's username from the client
+                  strncpy(receiver, buffer, SIZE - 1); // Copy the receiver's username into the receiver buffer, leaving space for the null terminator
+                  receiver[SIZE] = '\0'; // Ensure the receiver buffer is null-terminated
+                  printf("Receiver: %s\n", receiver); // Debug output to confirm the receiver's name
 
-                  // creata a path to the message file
-                  strcpy(messagePath, path);
-                  strcat(messagePath, "/");
+                  // Create a directory for the receiver if it doesn't already exist
+                  strcat(path, receiver); // Append the receiver's name to the base path
+                  create_dir(path); // Create the directory for the receiver
 
-                  // open index.txt update and save indx there
-                  strcat(path, "/index.txt");
-                  if (access(path, F_OK) == 0)
+                  // Prepare the path for the message file
+                  strcpy(messagePath, path); // Start with the receiver's directory path
+                  strcat(messagePath, "/"); // Add a trailing slash to the path
+
+                  // Open or update the index file to get the current message index
+                  strcat(path, "/index.txt"); // Append the index file name to the path
+                  if (access(path, F_OK) == 0) // Check if the index file exists
                   {
-                     // lock access to index.txt
-                     pthread_mutex_lock(&mutex);
-                     // file exists
-                     fp = fopen(path, "r");
-                     if (fp == NULL)
+                     pthread_mutex_lock(&mutex); // Lock the mutex to ensure thread-safe access
+                     fp = fopen(path, "r"); // Open the index file for reading
+                     if (fp == NULL) // Handle errors while opening the file
                      {
-                        if (send(*current_socket, "ERR", 4, 0) == -1)
-                        {
+                           if (send(*current_socket, "ERR", 4, 0) == -1) // Notify the client of the error
+                           {
+                              perror("send answer failed");
+                              return NULL;
+                           }
+                           perror("Failed to open file: ");
+                           break;
+                     }
+                     fgets(index, BUF, fp); // Read the current message index from the file
+                     fclose(fp); // Close the index file
+                  }
+
+                  indx = atoi(index); // Convert the index from a string to an integer
+                  indx++; // Increment the index for the new message
+
+                  // Write the updated index back to the index file
+                  fp = fopen(path, "w"); // Open the index file for writing
+                  if (fp == NULL) // Handle errors while opening the file
+                  {
+                     if (send(*current_socket, "ERR", 4, 0) == -1) // Notify the client of the error
+                     {
                            perror("send answer failed");
                            return NULL;
-                        }
-                        perror("Failed to open file: ");
-                        break;
                      }
-                     fgets(index, BUF, fp);
-                     fclose(fp);
+                     perror("Failed to open file: ");
+                     break;
                   }
+                  fprintf(fp, "%d", indx); // Write the updated index to the file
+                  fclose(fp); // Close the index file
+                  pthread_mutex_unlock(&mutex); // Unlock the mutex
 
-                  indx = atoi(index); // convert char to int
+                  // Prepare the full path for the new message file
+                  sprintf(index, "%d", indx); // Convert the updated index back to a string
+                  strcat(messagePath, index); // Append the index to the message path
+                  strcat(messagePath, ".txt"); // Add the .txt extension to the message path
 
-                  indx++;
-                  // open index.txt for writing and save indx there
-                  fp = fopen(path, "w");
-                  if (fp == NULL)
+                  // Receive the subject of the message
+                  bzero(buffer, BUF); // Clear the buffer
+                  bzero(subject, SUBJ_SIZE); // Clear the subject buffer
+                  message(current_socket, buffer); // Receive the subject from the client
+                  strncpy(subject, buffer, SUBJ_SIZE - 1); // Copy the subject into the subject buffer
+                  subject[SUBJ_SIZE] = '\0'; // Ensure the subject buffer is null-terminated
+                  printf("Subject: %s\n", subject); // Debug output to confirm the subject
+
+                  // Open the new message file for writing
+                  fp = fopen(messagePath, "a"); // Open the message file in append mode
+                  if (fp == NULL) // Handle errors while opening the file
                   {
-                     if (send(*current_socket, "ERR", 4, 0) == -1)
+                     if (send(*current_socket, "ERR", 4, 0) == -1) // Notify the client of the error
                      {
-                        perror("send answer failed");
-                        return NULL;
+                           perror("send answer failed");
+                           return NULL;
                      }
                      perror("Failed to open file: ");
                      break;
                   }
 
-                  fprintf(fp, "%d", indx);
-                  fclose(fp);
-                  pthread_mutex_unlock(&mutex);
+                  // Write the sender, receiver, and subject to the message file
+                  fprintf(fp, "%s\n", sender); // Write the sender's name
+                  fprintf(fp, "%s\n", receiver); // Write the receiver's name
+                  fprintf(fp, "%s\n", subject); // Write the subject
 
-                  // sava indx into index as a string
-                  sprintf(index, "%d", indx);
-                  strcat(messagePath, index);
-                  strcat(messagePath, ".txt");
-
-                  // subject
-                  bzero(buffer, BUF);
-                  bzero(subject, SUBJ_SIZE);
-                  message(current_socket, buffer);
-                  strncpy(subject, buffer, SUBJ_SIZE - 1);
-                  subject[SUBJ_SIZE] = '\0';
-                  printf("Subject: %s\n", subject);
-
-                  // open new file and write the message there
-                  fp = fopen(messagePath, "a");
-                  if (fp == NULL)
-                  {
-                     if (send(*current_socket, "ERR", 4, 0) == -1)
-                     {
-                        perror("send answer failed");
-                        return NULL;
-                     }
-                     perror("Failed to open file: ");
-                     break;
-                  }
-                  fprintf(fp, "%s\n", sender);
-                  fprintf(fp, "%s\n", receiver);
-                  fprintf(fp, "%s\n", subject);
-
-                  // receive message and save it in the file
+                  // Receive the message body from the client
                   while (1)
                   {
-                     bzero(buffer, BUF);
-                     message(current_socket, buffer);
-                     if (strncmp(".", buffer, 1) == 0)
+                     bzero(buffer, BUF); // Clear the buffer for each new line
+                     message(current_socket, buffer); // Receive the next line of the message
+                     if (strncmp(".", buffer, 1) == 0) // Check for the end-of-message indicator (".")
                      {
-                        printf("End of message!\n");
-                        break;
+                           printf("End of message!\n"); // Debug output
+                           break; // Exit the loop when the message ends
                      }
 
-                     printf("Message: %s\n", buffer);
-                     fprintf(fp, "%s\n", buffer);
+                     printf("Message: %s\n", buffer); // Debug output to show the message content
+                     fprintf(fp, "%s\n", buffer); // Write the message line to the file
                   }
-                  fclose(fp);
-                  if (send(*current_socket, "OK", 3, 0) == -1)
+
+                  fclose(fp); // Close the message file
+                  if (send(*current_socket, "OK", 3, 0) == -1) // Notify the client of success
                   {
                      perror("send answer failed");
                      return NULL;
@@ -453,74 +454,82 @@ void *clientCommunication(void *data)
                }
 
                ///////////////////////LIST MESSAGES////////////////////////
-                if (listMessage == 0) {
-                    printf("LIST: \n");
-                    // User directory
-                    strcpy(receiver, username);
-                    strcpy(path, directory);
-                    strcat(path, receiver);
+               if (listMessage == 0) { // Check if the client sent the "LIST" command
+                  printf("LIST: \n");
 
-                    // Prüfe, ob das Verzeichnis existiert
-                    if (access(path, F_OK) == -1) {
-                        printf("User doesn't exist! Creating directory: %s\n", path);
-                        create_dir(path);
-                    }
+                  // Prepare the user's directory path
+                  strcpy(receiver, username); // Set the receiver to the logged-in user's username
+                  strcpy(path, directory); // Start with the base directory
+                  strcat(path, receiver); // Append the username to form the user's message directory path
 
-                    // Öffne das Benutzerverzeichnis
-                    d = opendir(path);
-                    if (!d) {
-                        perror("Failed to open directory");
-                        if (send(*current_socket, "ERR", 4, 0) == -1) {
-                            perror("send answer failed");
-                        }
-                        continue;
-                    }
+                  // Check if the user's directory exists
+                  if (access(path, F_OK) == -1) { // If the directory does not exist
+                     printf("User doesn't exist! Creating directory: %s\n", path);
+                     create_dir(path); // Create the directory for the user
+                  }
 
-                    // Nachrichten zählen
-                    int counter = 0;
-                    while ((dir = readdir(d)) != NULL) {
-                        if (dir->d_type == DT_REG && strcmp(dir->d_name, "index.txt") != 0) {
-                            // Nachrichtendatei gefunden
-                            printf("Message found: %s\n", dir->d_name);
+                  // Open the user's directory
+                  d = opendir(path); // Attempt to open the directory
+                  if (!d) { // If opening the directory fails
+                     perror("Failed to open directory"); // Print an error message
+                     if (send(*current_socket, "ERR", 4, 0) == -1) { // Notify the client about the error
+                           perror("send answer failed");
+                     }
+                     continue; // Skip further processing for this request
+                  }
 
-                            // Pfad zur Nachricht erstellen
-                            snprintf(messagePath, BUF, "%s/%s", path, dir->d_name);
-                            fp = fopen(messagePath, "r");
-                            if (!fp) {
-                                perror("Failed to open message file");
-                                continue;
-                            }
+                  // Initialize the message counter
+                  int counter = 0;
 
-                            // Betreff auslesen
-                            for (int i = 0; i < 3; i++) {
-                                fgets(subject, SUBJ_SIZE, fp);
-                            }
-                            fclose(fp);
+                  // Iterate over the files in the user's directory
+                  while ((dir = readdir(d)) != NULL) { // Read each directory entry
+                     // Check if the entry is a regular file and not "index.txt"
+                     if (dir->d_type == DT_REG && strcmp(dir->d_name, "index.txt") != 0) {
+                           // Message file found
+                           printf("Message found: %s\n", dir->d_name);
 
-                            // Nachricht an Client senden
-                            snprintf(buffer, BUF, "%s. Subject: %s", dir->d_name, subject);
-                            printf("Sending: %s\n", buffer);
-                            if (send(*current_socket, buffer, strlen(buffer), 0) == -1) {
-                                perror("send failed");
-                            }
-                            counter++;
-                        }
-                    }
-                    closedir(d);
+                           // Create the full path to the message file
+                           snprintf(messagePath, BUF, "%s/%s", path, dir->d_name);
 
-                    // Wenn keine Nachrichten vorhanden sind
-                    if (counter == 0) {
-                        strcpy(buffer, "You have 0 messages.\r\n");
-                        if (send(*current_socket, buffer, strlen(buffer), 0) == -1) {
-                            perror("send failed");
-                        }
-                    }
+                           // Open the message file for reading
+                           fp = fopen(messagePath, "r");
+                           if (!fp) { // Handle error opening the file
+                              perror("Failed to open message file");
+                              continue; // Skip this file and proceed with the next
+                           }
 
-                    // Bestätigung senden
-                    if (send(*current_socket, "OK", 3, 0) == -1) {
-                        perror("send answer failed");
-                    }
-                }
+                           // Read the subject line from the message file
+                           for (int i = 0; i < 3; i++) { // Skip to the third line (subject line)
+                              fgets(subject, SUBJ_SIZE, fp);
+                           }
+                           fclose(fp); // Close the file after reading the subject
+
+                           // Prepare the message details to send to the client
+                           snprintf(buffer, BUF, "Subject: %s", subject);
+                           printf("Sending: %s\n", buffer); // Debug output of the message being sent
+
+                           // Send the message details to the client
+                           if (send(*current_socket, buffer, strlen(buffer), 0) == -1) {
+                              perror("send failed"); // Handle errors in sending the message
+                           }
+                           counter++; // Increment the message counter
+                     }
+                  }
+                  closedir(d); // Close the directory after reading all entries
+
+                  // If no messages are found, notify the client
+                  if (counter == 0) {
+                     strcpy(buffer, "You have 0 messages.\r\n"); // Prepare the message
+                     if (send(*current_socket, buffer, strlen(buffer), 0) == -1) { // Send it to the client
+                           perror("send failed");
+                     }
+                  }
+
+                  // Send confirmation to the client
+                  if (send(*current_socket, "OK", 3, 0) == -1) { // Notify the client that the operation was successful
+                     perror("send answer failed");
+                  }
+               }
 
                //////////////////////////////////////READ MESSAGE///////////////////////
                if (readMessage == 0)
