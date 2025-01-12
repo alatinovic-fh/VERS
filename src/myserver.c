@@ -634,85 +634,61 @@ void *clientCommunication(void *data)
 
 
                ///////////////////////////DELETE MESSAGE//////////////////////////////////
-               if (deleteMessage == 0)
-               {
+               if (deleteMessage == 0) {
                   printf("DELETE\n");
                   bzero(buffer, BUF);
                   bzero(receiver, SIZE);
-                  // save username
+
+                  // Save username
                   strncpy(receiver, username, SIZE - 1);
                   receiver[SIZE] = '\0';
 
-                  // create a path for user
+                  // Create a path for the user
                   strcpy(path, directory);
                   strcat(path, receiver);
 
-                  // check if the user exists
-                  if (access(path, F_OK) == -1)
-                  {
+                  // Check if the user exists
+                  if (access(path, F_OK) == -1) {
                      printf("User doesn't exist!\n");
-                     if (send(*current_socket, "ERR", 4, 0) == -1)
-                     {
-                        perror("send answer failed");
-                        return NULL;
+                     if (send(*current_socket, "ERR", 4, 0) == -1) {
+                           perror("send answer failed");
+                           return NULL;
                      }
                      continue;
                   }
 
-                  // read the number of the message
+                  // Read the number of the message
                   bzero(buffer, BUF);
                   bzero(msgNum, BUF);
                   message(current_socket, msgNum);
 
-                  // create path to the message
+                  // Create path to the message
                   strcpy(messagePath, path);
                   strcat(messagePath, "/");
                   strcat(messagePath, msgNum);
                   strcat(messagePath, ".txt");
 
-                  // open user directory
-                  d = opendir(path);
-                  // if directory can be opened, find the file and delete it
-                  if (d)
-                  {
-                     strcpy(index, msgNum);
-                     strcat(index, ".txt");
-                     while ((dir = readdir(d)) != NULL)
-                     {
-                        if (dir->d_type == DT_REG && strcmp(dir->d_name, index) == 0) // regular file
-                        {
-                           if (remove(messagePath) == 0)
-                           {
-                              printf("File deleted successfully.\n");
-                              if (send(*current_socket, "OK", 3, 0) == -1)
-                              {
-                                 perror("send answer failed");
-                                 return NULL;
-                              }
-                              break;
-                           }
-                           else
-                           {
-                              printf("Unable to delete the file.\n");
-                              if (send(*current_socket, "ERR", 4, 0) == -1)
-                              {
-                                 perror("send answer failed");
-                                 return NULL;
-                              }
-                              break;
-                           }
-                        }
-                        else if (dir->d_type == DT_REG && strcmp(dir->d_name, index) != 0)
-                        {
-                           printf("No such file.\n");
-                           if (send(*current_socket, "ERR", 4, 0) == -1)
-                           {
-                              perror("send answer failed");
-                              return NULL;
-                           }
-                        }
+                  printf("Deleting file: %s\n", messagePath);
+
+                  // Delete the file
+                  if (access(messagePath, F_OK) == -1) {
+                     printf("File does not exist: %s\n", messagePath);
+                     if (send(*current_socket, "ERR", 4, 0) == -1) {
+                           perror("send answer failed");
+                           return NULL;
                      }
-                     closedir(d);
+                  } else if (remove(messagePath) == 0) {
+                     printf("File deleted successfully: %s\n", messagePath);
+                     if (send(*current_socket, "OK", 3, 0) == -1) {
+                           perror("send answer failed");
+                           return NULL;
+                     }
+                  } else {
+                     perror("Unable to delete the file");
+                     if (send(*current_socket, "ERR", 4, 0) == -1) {
+                           perror("send answer failed");
+                           return NULL;
+                     }
                   }
                }
             } while (strcmp(buffer, "quit") != 0 && !abortRequested);
