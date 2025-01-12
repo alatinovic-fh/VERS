@@ -454,82 +454,75 @@ void *clientCommunication(void *data)
                }
 
                ///////////////////////LIST MESSAGES////////////////////////
-               if (listMessage == 0) { // Check if the client sent the "LIST" command
+               if (listMessage == 0) {
                   printf("LIST: \n");
 
                   // Prepare the user's directory path
-                  strcpy(receiver, username); // Set the receiver to the logged-in user's username
-                  strcpy(path, directory); // Start with the base directory
-                  strcat(path, receiver); // Append the username to form the user's message directory path
+                  strcpy(receiver, username);
+                  strcpy(path, directory);
+                  strcat(path, receiver);
 
                   // Check if the user's directory exists
-                  if (access(path, F_OK) == -1) { // If the directory does not exist
+                  if (access(path, F_OK) == -1) {
                      printf("User doesn't exist! Creating directory: %s\n", path);
-                     create_dir(path); // Create the directory for the user
+                     create_dir(path);
                   }
 
                   // Open the user's directory
-                  d = opendir(path); // Attempt to open the directory
-                  if (!d) { // If opening the directory fails
-                     perror("Failed to open directory"); // Print an error message
-                     if (send(*current_socket, "ERR", 4, 0) == -1) { // Notify the client about the error
-                           perror("send answer failed");
+                  d = opendir(path);
+                  if (!d) {
+                     perror("Failed to open directory");
+                     if (send(*current_socket, "ERR", 4, 0) == -1) {
+                           perror("send failed");
                      }
-                     continue; // Skip further processing for this request
+                     continue;
                   }
 
-                  // Initialize the message counter
+                  char allSubjects[BUF * 10] = ""; // Buffer for all subjects
                   int counter = 0;
 
                   // Iterate over the files in the user's directory
-                  while ((dir = readdir(d)) != NULL) { // Read each directory entry
-                     // Check if the entry is a regular file and not "index.txt"
+                  while ((dir = readdir(d)) != NULL) {
                      if (dir->d_type == DT_REG && strcmp(dir->d_name, "index.txt") != 0) {
-                           // Message file found
-                           printf("Message found: %s\n", dir->d_name);
-
-                           // Create the full path to the message file
                            snprintf(messagePath, BUF, "%s/%s", path, dir->d_name);
 
-                           // Open the message file for reading
-                           fp = fopen(messagePath, "r");
-                           if (!fp) { // Handle error opening the file
+                           FILE *fp = fopen(messagePath, "r");
+                           if (!fp) {
                               perror("Failed to open message file");
-                              continue; // Skip this file and proceed with the next
+                              continue;
                            }
 
-                           // Read the subject line from the message file
-                           for (int i = 0; i < 3; i++) { // Skip to the third line (subject line)
-                              fgets(subject, SUBJ_SIZE, fp);
-                           }
-                           fclose(fp); // Close the file after reading the subject
+                           // Skip sender and receiver lines, then read the subject
+                           for (int i = 0; i < 2; i++) fgets(subject, SUBJ_SIZE, fp);
+                           fgets(subject, SUBJ_SIZE, fp); // Read the subject
+                           fclose(fp);
 
-                           // Prepare the message details to send to the client
-                           snprintf(buffer, BUF, "Subject: %s", subject);
-                           printf("Sending: %s\n", buffer); // Debug output of the message being sent
-
-                           // Send the message details to the client
-                           if (send(*current_socket, buffer, strlen(buffer), 0) == -1) {
-                              perror("send failed"); // Handle errors in sending the message
-                           }
-                           counter++; // Increment the message counter
+                           // Append subject to the aggregated string
+                           strncat(allSubjects, "Subject: ", sizeof(allSubjects) - strlen(allSubjects) - 1);
+                           strncat(allSubjects, subject, sizeof(allSubjects) - strlen(allSubjects) - 1);
+                           counter++;
                      }
                   }
-                  closedir(d); // Close the directory after reading all entries
+                  closedir(d);
 
-                  // If no messages are found, notify the client
-                  if (counter == 0) {
-                     strcpy(buffer, "You have 0 messages.\r\n"); // Prepare the message
-                     if (send(*current_socket, buffer, strlen(buffer), 0) == -1) { // Send it to the client
+                  // Send the response
+                  if (counter > 0) {
+                     if (send(*current_socket, allSubjects, strlen(allSubjects), 0) == -1) {
+                           perror("send failed");
+                     }
+                  } else {
+                     strcpy(buffer, "You have 0 messages.\r\n");
+                     if (send(*current_socket, buffer, strlen(buffer), 0) == -1) {
                            perror("send failed");
                      }
                   }
 
-                  // Send confirmation to the client
-                  if (send(*current_socket, "OK", 3, 0) == -1) { // Notify the client that the operation was successful
-                     perror("send answer failed");
+                  // Send final confirmation
+                  if (send(*current_socket, "OK", 3, 0) == -1) {
+                     perror("send failed");
                   }
                }
+
 
                //////////////////////////////////////READ MESSAGE///////////////////////
                if (readMessage == 0)
