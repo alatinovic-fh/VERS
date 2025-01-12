@@ -535,124 +535,103 @@ void *clientCommunication(void *data)
                if (readMessage == 0)
                {
                   printf("READ:\n");
-                  // save user name
+                  // Save user name
                   bzero(buffer, BUF);
                   bzero(receiver, SIZE);
 
                   strncpy(receiver, username, SIZE - 1);
                   receiver[SIZE] = '\0';
 
-                  // create a path for user
+                  // Create a path for the user
                   strcpy(path, directory);
                   strcat(path, receiver);
 
-                  // check if the user exists
+                  // Check if the user exists
                   if (access(path, F_OK) == -1)
                   {
                      printf("User doesn't exist!\n");
                      if (send(*current_socket, "ERR", 4, 0) == -1)
                      {
-                        perror("send answer failed");
-                        return NULL;
+                           perror("send answer failed");
+                           return NULL;
                      }
                      continue;
                   }
 
-                  // read the number of the message
+                  // Read the number of the message
                   bzero(buffer, BUF);
                   bzero(msgNum, BUF);
                   message(current_socket, msgNum);
 
-                  // create path to the message
+                  // Create path to the message
                   strcpy(messagePath, path);
                   strcat(messagePath, "/");
                   strcat(messagePath, msgNum);
                   strcat(messagePath, ".txt");
 
-                  // open user directory
-                  d = opendir(path);
-                  // if directory can be opened, find the file and read it
-                  if (d)
+                  // Open the message file
+                  FILE *fp = fopen(messagePath, "r");
+                  if (fp == NULL)
                   {
-                     strcpy(index, msgNum);
-                     strcat(index, ".txt");
-
-                     while ((dir = readdir(d)) != NULL)
+                     perror("Failed to open file");
+                     if (send(*current_socket, "ERR", 4, 0) == -1)
                      {
-                        if (dir->d_type == DT_REG && strcmp(dir->d_name, index) == 0) // regular file
-                        {
-                           fp = fopen(messagePath, "r");
-                           if (fp == NULL)
-                           {
-                              if (send(*current_socket, "ERR", 4, 0) == -1)
-                              {
-                                 perror("send answer failed");
-                                 return NULL;
-                              }
-                              perror("Failed to open file: ");
-                              break;
-                           }
-                           printf("\nFile:  %s:\n", index);
-                           // read the file
-                           while (fgets(buffer, BUF, fp) != NULL)
-                           {
-                              sendMsg = send(*current_socket, buffer, strlen(buffer), 0);
-                              if (sendMsg == -1)
-                              {
-                                 perror("send failed!!");
-                                 return NULL;
-                              }
-                              printf("%s", buffer);
-                              bzero(buffer, BUF);
-                           }
-                           // if it's the end of file -> only for visibility
-                           if (feof(fp))
-                           {
-                              printf("---------------------------------\n");
-                           }
+                           perror("send answer failed");
+                     }
+                     return NULL;
+                  }
 
-                           else if (ferror(fp))
-                           {
-                              if (send(*current_socket, "ERR", 4, 0) == -1)
-                              {
-                                 perror("send answer failed");
-                                 return NULL;
-                              }
-                              perror("reading file");
-                           }
+                  // Build the complete file content
+                  char *fileContent = NULL;
+                  size_t totalSize = 0;
+                  while (fgets(buffer, BUF, fp) != NULL)
+                  {
+                     size_t lineLength = strlen(buffer);
+
+                     // Expand the fileContent buffer
+                     char *newContent = realloc(fileContent, totalSize + lineLength + 1);
+                     if (!newContent)
+                     {
+                           perror("Memory allocation failed");
+                           free(fileContent);
                            fclose(fp);
-                           break;
-                        }
-                        // if file is a regular file but not the right one, send ERR
-                        if (dir->d_type == DT_REG && strcmp(dir->d_name, index) != 0)
-                        {
-                           printf("No message with that number.\n");
-                           // no message with that number
                            if (send(*current_socket, "ERR", 4, 0) == -1)
                            {
                               perror("send answer failed");
-                              return NULL;
                            }
-                           break;
-                        }
+                           return NULL;
                      }
-                     closedir(d);
+
+                     fileContent = newContent;
+                     strcpy(fileContent + totalSize, buffer); // Append line to the content
+                     totalSize += lineLength;
                   }
-                  else
+
+                  fclose(fp);
+
+                  // Send the entire content at once
+                  if (fileContent)
                   {
-                     printf("Unable to open directory.\n");
-                     if (send(*current_socket, "ERR", 4, 0) == -1)
+                     fileContent[totalSize] = '\0'; // Null-terminate
+                     if (send(*current_socket, fileContent, totalSize, 0) == -1)
                      {
-                        perror("send answer failed");
-                        return NULL;
+                           perror("send failed");
+                           free(fileContent);
+                           return NULL;
                      }
+                     printf("Sent content:\n%s", fileContent);
+                     free(fileContent);
                   }
+
+                  // Send confirmation
                   if (send(*current_socket, "OK", 3, 0) == -1)
                   {
                      perror("send answer failed");
                      return NULL;
                   }
                }
+
+
 
                ///////////////////////////DELETE MESSAGE//////////////////////////////////
                if (deleteMessage == 0)
