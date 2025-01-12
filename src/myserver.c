@@ -589,7 +589,7 @@ void *clientCommunication(void *data)
                      size_t lineLength = strlen(buffer);
 
                      // Expand the fileContent buffer
-                     char *newContent = realloc(fileContent, totalSize + lineLength + 1);
+                     char *newContent = (char *) realloc(fileContent, totalSize + lineLength + 1);
                      if (!newContent)
                      {
                            perror("Memory allocation failed");
